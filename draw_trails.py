@@ -1,3 +1,5 @@
+#DO NOT EDIT.
+
 """
 Class used to determine location and size of trail objects in `main.py`
 

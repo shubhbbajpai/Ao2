@@ -1,3 +1,5 @@
+#DO NOT EDIT.
+
 def av(*args):
     return sum(args)/len(args)
 
