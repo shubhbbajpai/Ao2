@@ -157,9 +157,7 @@ class Trail:
     def collect_all_mountains(self) -> list[Mountain]:
         """Returns a list of all mountains on the trail."""
 
-        if not list is None:
-
-            return list
+        raise NotImplementedError()
 
     def difficulty_maximum_paths(self, max_difficulty: int) -> list[list[Mountain]]: # Input to this should not exceed k > 50, at most 5 branches.
         # 1008/2085 ONLY!
