@@ -3,12 +3,14 @@ from dataclasses import dataclass
 
 from mountain import Mountain
 
+from data_structures import linked_stack
+
 from typing import TYPE_CHECKING, Union
 
 # Avoid circular imports for typing.
 if TYPE_CHECKING:
     from personality import WalkerPersonality
-    from personality import PersonalityDecision
+
 
 @dataclass
 class TrailSplit:
@@ -107,21 +109,61 @@ class Trail:
 
     def follow_path(self, personality: WalkerPersonality) -> None:
         """Follow a path and add mountains according to a personality."""
-        
-        # personality.select_branch(Trail(TrailSplit.top), Trail(TrailSplit.bottom))
+        from personality import PersonalityDecision
 
-        # if PersonalityDecision.TOP:
+        store = self.store
 
-        #     WalkerPersonality.add
+        before_splitting = linked_stack.LinkedStack()
 
-        raise NotImplementedError()
+        while True:
+
+            if store is None:
+                
+                if before_splitting.is_empty():
+
+                    break
+
+                store = before_splitting.pop()
+
+            if isinstance(store, TrailSeries):
+
+                personality.add_mountain(store.mountain)
+
+                store = store.following.store
+
+            elif isinstance(store, TrailSplit):
+
+                #allows for the personality to choose between the top and bottom branch
+                personality_decision = personality.select_branch(Trail(store.top.store), Trail(store.bottom.store))
+
+                before_splitting.push(store.following.store)
+
+                top_branch = store.top
+
+                bottom_branch = store.bottom
+
+                if personality_decision == PersonalityDecision.TOP:
+                    
+                    store = top_branch.store
+
+                elif personality_decision == PersonalityDecision.BOTTOM:
+
+                    store = bottom_branch.store
+
+                elif personality_decision == PersonalityDecision.STOP:
+                    
+                    break
 
     def collect_all_mountains(self) -> list[Mountain]:
         """Returns a list of all mountains on the trail."""
-        raise NotImplementedError()
+
+        if not list is None:
+
+            return list
 
     def difficulty_maximum_paths(self, max_difficulty: int) -> list[list[Mountain]]: # Input to this should not exceed k > 50, at most 5 branches.
         # 1008/2085 ONLY!
+
         raise NotImplementedError()
 
     def difficulty_difference_paths(self, max_difference: int) -> list[list[Mountain]]: # Input to this should not exceed k > 50, at most 5 branches.
