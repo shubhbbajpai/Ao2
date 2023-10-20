@@ -1,19 +1,25 @@
 from __future__ import annotations
 from mountain import Mountain
 
+from data_structures import hash_table
+
 class MountainManager:
 
     def __init__(self) -> None:
-        pass
+        
+        self.mountain_organized = hash_table.LinearProbeTable()
 
     def add_mountain(self, mountain: Mountain) -> None:
-        raise NotImplementedError()
+        table[(k1,k2)]
+        self.mountain_organized.hash
 
     def remove_mountain(self, mountain: Mountain) -> None:
-        raise NotImplementedError()
+        
+        self.mountain_organized.pop(mountain)
 
     def edit_mountain(self, old: Mountain, new: Mountain) -> None:
-        raise NotImplementedError()
+        
+        ...
 
     def mountains_with_difficulty(self, diff: int) -> list[Mountain]:
         raise NotImplementedError()

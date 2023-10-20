@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from mountain import Mountain
 
-from data_structures import linked_stack
+from data_structures import linked_stack, stack_adt
 
 from typing import TYPE_CHECKING, Union
 
@@ -157,12 +157,49 @@ class Trail:
     def collect_all_mountains(self) -> list[Mountain]:
         """Returns a list of all mountains on the trail."""
 
-        raise NotImplementedError()
+        mountains_list = []
+        stack = linked_stack.LinkedStack()
+        stack.push(self.store)
+
+        while not stack.is_empty():
+            item = stack.pop()
+            if isinstance(item, TrailSeries):
+                mountains_list.append(item.mountain)
+                stack.push(item.following.store)
+            elif isinstance(item, TrailSplit):
+                stack.push(item.top.store)
+                stack.push(item.bottom.store)
+                stack.push(item.following.store)
+
+        return mountains_list
 
     def difficulty_maximum_paths(self, max_difficulty: int) -> list[list[Mountain]]: # Input to this should not exceed k > 50, at most 5 branches.
         # 1008/2085 ONLY!
 
-        raise NotImplementedError()
+        all_store_paths = []
+        ind_path = [] # individual path
+        follow_path_list = [] #follow list
+        self.difficulty_maximum_auxilary(self.store, max_difficulty, all_store_paths, ind_path, follow_path_list) 
+        return all_store_paths
+    
+    def difficulty_maximum_auxilary(self, current_store: TrailStore, max_difficulty, all_store_paths, ind_path, follow_path_list):
+
+        if isinstance (current_store, TrailSplit):
+            self.difficulty_maximum_auxilary (current_store.top.store, max_difficulty, all_store_paths, ind_path[:], follow_path_list+ [current_store. following.store]) 
+            self.difficulty_maximum_auxilary(current_store.bottom. store, max_difficulty, all_store_paths, ind_path[:], follow_path_list+ [current_store.following.store])
+        
+        elif isinstance(current_store, TrailSeries):
+            if current_store.mountain.difficulty_level <= max_difficulty:
+                ind_path.append(current_store.mountain)
+                self.difficulty_maximum_auxilary(current_store.following.store, max_difficulty, all_store_paths, ind_path, follow_path_list)
+            else:
+                ind_path.clear()
+        else: # current store.following is None 
+            if not len(follow_path_list) == 0:
+                current_store = follow_path_list.pop()
+                self.difficulty_maximum_auxilary(current_store, max_difficulty, all_store_paths, ind_path, follow_path_list)
+            else:
+                all_store_paths.append(ind_path)
 
     def difficulty_difference_paths(self, max_difference: int) -> list[list[Mountain]]: # Input to this should not exceed k > 50, at most 5 branches.
         # 1054 ONLY!
