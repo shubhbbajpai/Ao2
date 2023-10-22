@@ -58,3 +58,12 @@ class Mountain:
         if self.difficulty_level == other.difficulty_level:
             return self.name >= other.name
         # Return False if self's difficulty level is less than other's.
+
+    def get_name(self) -> str:
+        return self.name
+
+    def get_difficulty_level(self) -> int:
+        return self.difficulty_level
+
+    def get_length(self) -> int:
+        return self.length

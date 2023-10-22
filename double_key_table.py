@@ -8,44 +8,62 @@ K1 = TypeVar('K1')
 K2 = TypeVar('K2')
 V = TypeVar('V')
 
+
 class DoubleKeyTable(Generic[K1, K2, V]):
     """
-    Double Hash Table.
+    Double Hash Table stores data in a two-level hash table. The first key `K1` hashes
+    into an outer table which contains multiple inner tables (or sub-tables). The second key `K2` then hashes
+    into one of these inner tables.
+
+    - The outer table and inner tables are implemented using open addressing with linear probing.
+    - The outer table contains keys of type `K1` and values which are instances of the inner tables (LinearProbeTable).
+    - The inner tables contain keys of type `K2` and values of type `V`.
 
     Type Arguments:
-        - K1:   1st Key Type. In most cases should be string.
-                Otherwise `hash1` should be overwritten.
-        - K2:   2nd Key Type. In most cases should be string.
-                Otherwise `hash2` should be overwritten.
-        - V:    Value Type.
+    - K1:   1st Key Type. In most cases should be string.
+            Otherwise `hash1` should be overwritten.
+    - K2:   2nd Key Type. In most cases should be string.
+            Otherwise `hash2` should be overwritten.
+    - V:    Value Type.
 
     Unless stated otherwise, all methods have O(1) complexity.
     """
 
     # No test case should exceed 1 million entries.
-    TABLE_SIZES = [5, 13, 29, 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869]
+    TABLE_SIZES = [5, 13, 29, 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241,
+                   786433, 1572869]
 
     HASH_BASE = 31
 
-    def __init__(self, sizes:list|None=None, internal_sizes:list|None=None) -> None:
-        
+    def __init__(self, sizes: list | None = None, internal_sizes: list | None = None) -> None:
+        """
+        Initialise the DoubleKeyTable with given sizes or defaults.
+
+        Args:
+        - sizes (List[int], optional): Sizes for the external tables. Defaults to predefined TABLE_SIZES.
+        - internal_sizes (List[int], optional): Sizes for the internal tables. Defaults to predefined TABLE_SIZES.
+
+        Complexity:
+        - Best and Worst: O(n), where n is the initial size of the outer table due to the initialisation of ArrayR.
+          All other operations are typically O(1) average time.
+        """
+
         if sizes is not None:
-
-            self.TABLE_SIZES = sizes
-        
-        self.size_index = 0
-
-        self.outer_table: ArrayR[tuple[K1, V]] = ArrayR(self.TABLE_SIZES[self.size_index])
-
-        self.count = 0
-
-        self.size_index = 0
-
-        self.inner_table = {}
+            self.external_table_sizes = sizes
+        else:
+            self.external_table_sizes = self.TABLE_SIZES
 
         if internal_sizes is not None:
+            self.internal_table_sizes = internal_sizes
+        else:
+            self.internal_table_sizes = self.TABLE_SIZES
 
-            self.TABLE_SIZES = internal_sizes
+        self.size_index = 0
+
+        self.external_table_array = ArrayR(self.external_table_sizes[self.size_index])
+
+        self.external_table_length = 0
+
 
     def hash1(self, key: K1) -> int:
         """
@@ -77,172 +95,258 @@ class DoubleKeyTable(Generic[K1, K2, V]):
 
     def _linear_probe(self, key1: K1, key2: K2, is_insert: bool) -> tuple[int, int]:
         """
-        Find the correct position for this key in the hash table using linear probing.
+        Determine the correct position for keys using linear probing.
 
-        :raises KeyError: When the key pair is not in the table, but is_insert is False.
-        :raises FullError: When a table is full and cannot be inserted.
+        Args:
+        - key1 (K1): The primary key.
+        - key2 (K2): The secondary key.
+        - is_insert (bool): A flag indicating whether the operation is for insertion.
+
+        Returns:
+        - tuple: A tuple containing positions in the outer and inner tables.
+
+        Raises:
+        - KeyError: If the key pair doesn't exist in the table and is_insert is False.
+        - FullError: If the table is full during an insertion operation.
+
+        Complexity:
+        - Best: O(1), if the initial hashed position is available or if the key exists at the initial hashed position.
+        - Worst: O(n + m), where n is the size of the outer table, as we might need to probe through all slots and
+          m is the inner table size (size of inner LinearProbeTable)
         """
 
-        # Initial position
-        position_outer_table = self.hash1(key1)
+        top_table_position = self.hash1(key1)
 
-        for _ in range(self.table_size):
-            if self.outer_table[position_outer_table] is None:
+        for _ in range(len(self.external_table_array)):
+            current_table_entry = self.external_table_array[top_table_position]
 
-                if not is_insert:
-                    raise KeyError(f'Error, the key pair of ({key1}, {key2}) was not found. Please try again.')
+            if current_table_entry is None:
+                if is_insert:
+                    new_table = LinearProbeTable(self.internal_table_sizes)
+                    new_table.hash = lambda k, table=new_table: self.hash2(k, table)
+                    self.external_table_array[top_table_position] = (key1, new_table)
 
-                inner_table = LinearProbeTable(self.TABLE_SIZES)
+                    bottom_level_position = new_table._linear_probe(key2, True)
+                    self.external_table_length += 1
+                    return top_table_position, bottom_level_position
+                else:
+                    raise KeyError(key1, key2)
 
-                inner_table.hash = lambda k: self.hash2(k, self.outer_table)
+            elif current_table_entry[0] == key1:
+                bottom_level_table = current_table_entry[1]
 
-                self.outer_table[position_outer_table] = (key1, inner_table)
+                if key2 in bottom_level_table:
+                    bottom_level_position = bottom_level_table._linear_probe(key2, False)
+                    return top_table_position, bottom_level_position
 
-                position_inner_table = inner_table._linear_probe(key2, is_insert)
+                else:
+                    if is_insert:
+                        bottom_level_position = bottom_level_table._linear_probe(key2, True)
+                        return top_table_position, bottom_level_position
+                    else:
+                        raise KeyError(key1, key2)
 
-                return position_outer_table, position_inner_table
-
-                
-            elif self.outer_table[position_outer_table][0] == key1:
-
-                inner_table = self.outer_table[position_outer_table][1]
-                
-                position_inner_table = self.outer_table[position_outer_table][1]._linear_probe(key2, True)
-
-                return position_outer_table, position_inner_table
-            
             else:
-                # Taken by something else. Time to linear probe.
-                position_outer_table = (position_outer_table + 1) % self.table_size
+                top_table_position = (top_table_position + 1) % self.table_size
 
         if is_insert:
-
             raise FullError("Table is full!")
-        
         else:
+            raise KeyError(key1, key2)
 
-            raise KeyError(f'Error, the key pair of ({key1}, {key2}) was not found. Please try again.')
-
-    def iter_keys(self, key:K1|None=None) -> Iterator[K1|K2]:
+    def iter_keys(self, key: K1 | None = None) -> Iterator[K1 | K2]:
         """
+        Generate an iterator (generator is a special type of iterator) over
+        keys in the table.
         key = None:
             Returns an iterator of all top-level keys in hash table
         key = k:
             Returns an iterator of all keys in the bottom-hash-table for k.
+
+        Args:
+        - key (K1, optional): If specified, yields keys from the inner table corresponding to this key.
+        Otherwise, yields all top-level keys.
+
+        Returns/Yields:
+        - A generator object of K1 | K2: Keys from the table.
+
+        Complexity for yielding and returning a generator:
+        Both best and worst case is O(1)
+
+        Overall/Total Complexity for yielding all keys:
+        - Best: O(n), if we are iterating over top-level keys and no probing is needed.
+        - Worst: O(n*m), where n is the size of the outer table and m is the maximum size of an inner table.
         """
         if key is None:
-            for item in self.outer_table:
+            # Yield top-level keys
+            for item in self.external_table_array:
                 if item is not None:
                     yield item[0]
         else:
-            inner_table = self.outer_table[self.hash1(key)]
-            if inner_table is not None:
-                yield from inner_table[1].keys()
+            # Yield keys from the internal hash table corresponding to the provided top-level key
+            key_hash = self.hash1(key)
+            key_position_outer_table = -1
+            for i in range(key_hash, len(self.external_table_array)):
+                if self.external_table_array[i] is not None and self.external_table_array[i][0] == key:
+                    key_position_outer_table = i
+                    break
 
-    def keys(self, key:K1|None=None) -> list[K1|K2]:
+            if key_position_outer_table == -1:
+                raise KeyError(f"Top-level key '{key}' not found in the table.")
+            else:
+                for k in self.external_table_array[key_position_outer_table][1].keys():
+                    yield k
+
+    def keys(self, key: K1 | None = None) -> list[K1 | K2]:
         """
+        Returns all key pairs in the hash table.
+
         key = None: returns all top-level keys in the table.
         key = x: returns all bottom-level keys for top-level key x.
-        """
 
-        res = []
+        Args:
+        - key (K1, optional): If specified, returns keys from the inner table corresponding to this key.
+        Otherwise, returns all top-level keys.
+
+        Returns:
+        - list: A list of keys.
+
+        Complexity:
+        Best: O(n) where n is the size of the outer table. This happens if we are returning top-level
+        keys and no probing is needed.
+        Worst: O(n*m) where n is the size of the outer table and m is the maximum size of an inner table,
+        and we are returning all the keys pairs and lots of probing is needed for the outer table.
+        """
         if key is None:
-            for item in self.outer_table:
-                if item is not None:
-                    res.append(item[0])
+            top_level_keys = []
+
+            for i in range(self.table_size):
+                if self.external_table_array[i] is not None:
+                    top_level_keys.append(self.external_table_array[i][0])
+            return top_level_keys
         else:
-            inner_table = self.outer_table[self.hash1(key)]
-            if inner_table is not None:
-                res.extend(inner_table[1].keys())
-        return res
+            key_hash = self.hash1(key)
+            key_position_outer_table = -1
+            for i in range(key_hash, len(self.external_table_array)):
+                if self.external_table_array[i] is not None:
+                    if self.external_table_array[i][0] == key:
+                        key_position_outer_table = i
+                        break
 
-        # res = []
-        # p1, p2 = self._linear_probe(key[0], key[1], False)
+            if key_position_outer_table == -1:
+                raise KeyError(f"Top-level key '{key}' not found in the table.")
+            else:
+                bottom_level_keys = self.external_table_array[key_position_outer_table][1].keys()
+                return bottom_level_keys
 
-        # if key is None:
-
-        #     for _ in range(len(self.outer_table)):
-        #         res.append(key[0])
-
-        # else:
-        
-        #     inner_table = inner_table = self.outer_table[p1][1]
-
-        #     for _ in range(len(inner_table)):
-
-        #         res.append(key[1])
-
-        # return res
-
-    def iter_values(self, key:K1|None=None) -> Iterator[V]:
+    def iter_values(self, key: K1 | None = None) -> Iterator[V]:
         """
+        Generate an iterator (generator is a special type of iterator) over
+        values in the table.
+
         key = None:
             Returns an iterator of all values in hash table
         key = k:
             Returns an iterator of all values in the bottom-hash-table for k.
+
+        Args:
+        - key (K1, optional): If specified, yields values from the inner table corresponding to this key.
+        Otherwise, yields all values.
+
+        Returns/Yields:
+        - V: Values from the table.
+
+        Complexity for yielding and returning a generator:
+        Both best and worst case is O(1)
+
+        Total complexity to yield all values:
+        Best: O(m), if we are returning values from an inner table and no probing is needed for the outer table,
+        where m is the maximum size of an inner table.
+        Worst: O(n*m), where n is the size of the outer table and m is the maximum size of an inner table. This
+        happens when we are returning all the values in the Double Key Hash Table.
         """
+        if key is None:
+            # Yield all values from all internal hash tables
+            for item in self.external_table_array:
+                if item is not None:
+                    for v in item[1].values():
+                        yield v
+        else:
+            # Yield values from the internal hash table corresponding to the provided top-level key
+            key_hash = self.hash1(key)
+            key_position_outer_table = -1
+            for i in range(key_hash, len(self.external_table_array)):
+                if self.external_table_array[i] is not None and self.external_table_array[i][0] == key:
+                    key_position_outer_table = i
+                    break
 
-        key_values = self.keys(key)
-
-        for key_value in key_values:
-            if key_value is None:
-                yield key_value
+            if key_position_outer_table == -1:
+                raise KeyError(f"Top-level key '{key}' not found in the table.")
             else:
-                inner_table = self.inner_tables.get(key_value, None)
-                if inner_table is not None:
-                    for item in inner_table:
-                        if item is not None:
-                            yield item[1]
+                for v in self.external_table_array[key_position_outer_table][1].values():
+                    yield v
 
-        # key_values = self.keys(key)
-
-        # for _ in range(key_values):
-
-        #     if key_values is None:
-
-        #         yield self.values
-            
-        #     else:
-
-        #         inner_table = LinearProbeTable()
-
-        #         #CHECK!!!
-        #         yield inner_table[key[1]]
-
-    def values(self, key:K1|None=None) -> list[V]:
+    def values(self, key: K1 | None = None) -> list[V]:
         """
+        Return a list of values from the table.
+
+        Args:
+        - key (K1, optional): If specified, returns values from the inner table corresponding to this key.
+        Otherwise, returns all values.
+
         key = None: returns all values in the table.
         key = x: returns all values for top-level key x.
+
+        Returns:
+        - list: A list of values.
+
+        Best: O(m), if we are returning values from an inner table and no probing is needed for the outer table,
+        where m is the maximum size of an inner table.
+        Worst: O(n*m), where n is the size of the outer table and m is the maximum size of an inner table. This
+        happens when we are returning all the values in the Double Key Hash Table.
         """
-
-        res = []
-
         if key is None:
-            for item in self.outer_table:
-                if item is not None:
-                    inner_table = item[1]
-                    if inner_table is not None:
-                        for inner_item in inner_table:
-                            if inner_item is not None:
-                                res.append(inner_item[1])
-        else:
-            inner_table = self.inner_tables.get(key, None)
-            if inner_table is not None:
-                for item in inner_table:
-                    if item is not None:
-                        res.append(item[1])
-                        
-        return res
+            all_values = []
+            for i in range(self.table_size):
+                if self.external_table_array[i] is not None:
+                    all_values += self.external_table_array[i][1].values()
+            return all_values
 
+
+        else:
+            key_hash = self.hash1(key)
+            key_position_outer_table = -1
+            for i in range(key_hash, len(self.external_table_array)):
+                if self.external_table_array[i] is not None:
+                    if self.external_table_array[i][0] == key:
+                        key_position_outer_table = i
+                        break
+
+            if key_position_outer_table == -1:
+                raise KeyError(f"Top-level key '{key}' not found in the table.")
+            else:
+                bottom_level_values = self.external_table_array[key_position_outer_table][1].values()
+                return bottom_level_values
+
+    # correct
     def __contains__(self, key: tuple[K1, K2]) -> bool:
         """
-        Checks to see if the given key is in the Hash Table
+        Checks if the given key pair exists in the hash table.
 
-        :complexity: See linear probe.
+        Parameters:
+        key (tuple): A tuple containing the two keys.
+
+        Returns:
+        bool: True if the key pair exists, otherwise False.
+
+        Complexity:
+        Best: O(1) if the key immediately resolves to a value.
+        Worst: O(n + m) where n is the size of the outer table and m is the size of the inner table.
+        This happens when we have to probe to the end of the outer table and then to the end of inner
+        table while probing over all the elements in the inner table.
         """
         try:
             _ = self[key]
-
         except KeyError:
             return False
         else:
@@ -250,75 +354,98 @@ class DoubleKeyTable(Generic[K1, K2, V]):
 
     def __getitem__(self, key: tuple[K1, K2]) -> V:
         """
-        Get the value at a certain key
+        Retrieve the value associated with the given key pair.
 
-        :raises KeyError: when the key doesn't exist.
+        Parameters:
+        key (tuple): A tuple containing the two keys.
+
+        Returns:
+        V: The associated value.
+
+        Raises:
+        KeyError: When the key pair is not present.
+
+        Complexity:
+        Best: O(1) when both keys immediately resolve to a value without collisions.
+        Worst: O(n + m) where n is the size of the outer table and m is the size of the inner table.
+        This happens when we have to probe to the end of the outer table and then to the end of inner table while
+        probing over all the elements in the inner table.
         """
+        top_level_key, bottom_level_key = key
+        top_level_position, bottom_table_position = self._linear_probe(top_level_key, bottom_level_key, False)
+        item = (self.external_table_array[top_level_position][1])[bottom_level_key]
 
-        p1, p2 = self._linear_probe(key[0], key[1], False)
-
-        inner_table = self.outer_table[p1][1]
-
-        return inner_table[key[1]]
-        
+        return item
 
     def __setitem__(self, key: tuple[K1, K2], data: V) -> None:
         """
-        Set an (key, value) pair in our hash table.
+        Insert or update a value in the Double Key hash table for a given key pair.
+
+        Parameters:
+        key: A tuple containing the two keys.
+        value: The value to be set.
+
+        Complexity
+        Best: O(1) when both keys immediately resolve to an empty slot without collisions.
+        Worst: O(n + m) in the worst case, potentially followed by a rehash operation, where
+        n is the size of the outer table and m is the size of the inner table.
+        This happens when we have to probe to the end of the outer table and then to the end of inner
+        table while probing over all the elements in the inner table.
         """
 
-        try:
+        top_key, bottom_key = key
+        top_level_position, bottom_level_position = self._linear_probe(top_key, bottom_key, True)
 
-            p1, p2 = self._linear_probe(key[0], key[1], True)
+        (self.external_table_array[top_level_position][1])[bottom_key] = data
 
-            inner_table = self.outer_table[p1][1]
-
-            inner_table[key[1]] = data
-
-        except KeyError:
-
+        if self.external_table_length > self.table_size / 2:
             self._rehash()
-            self.__setitem__(key, data)
-
-        else:
-
-            if self.outer_table[p1] is None:
-                
-                self.count += 1
-
-            self.outer_table[p1] = (key, data)
-
 
     def __delitem__(self, key: tuple[K1, K2]) -> None:
         """
-        Deletes a (key, value) pair in our hash table.
+        Remove a value from the hash table for a given key pair.
 
-        :raises KeyError: when the key doesn't exist.
+        Parameters:
+        key: A tuple containing the two keys.
+
+        Raises:
+        KeyError: When the key pair is not present.
+
+        Complexity
+        Best: O(1) when both keys immediately resolve to the item without collisions and no shuffling
+        of elements is needed i.e. the next position after the deleted element is None.
+        Worst: O(n + m) where m is the size of the outer table and m is the size of the inner table.
+        And also we have to shuffle the elements until None is found.
         """
-        
-        p1, p2 = self._linear_probe(key[0], key[1], False)
 
-        self.outer_table[p1] = None
-        self.count -= 1
+        top_table_key, bottom_table_key = key
+        top_table_position, bottom_table_position = self._linear_probe(top_table_key, bottom_table_key, False)
 
-        inner_table = self.outer_table[p1][1]
+        # Ensure the key exists before deletion
+        if (top_table_key, bottom_table_key) not in self:
+            raise KeyError(f"Key pair {key} doesn't exist in the table.")
 
-        p2 = (p2 + 1) % self.table_size
+        # Delete the key from the inner hash table
+        del self.external_table_array[top_table_position][1][bottom_table_key]
 
-        while self.outer_table[p1][1] is not None:
+        # If the inner hash table is empty after deletion, set its entry in the outer table to None
+        if not self.external_table_array[top_table_position][1]:
+            self.external_table_array[top_table_position] = None
+            self.external_table_length -= 1
 
-            key[1], value = inner_table
-
-            self.outer_table[p1][1] = None
-
-            p2_new = self._linear_probe(key[1], True)
-
-            inner_table[p2_new] = (key[1], value)
-
-            p2 = (p2 + 1) % self.table_size
+            # Start moving over the cluster
+            top_table_position = (top_table_position + 1) % self.table_size
+            while self.external_table_array[top_table_position] is not None:
+                key2, value = self.external_table_array[top_table_position]
+                self.external_table_array[top_table_position] = None
+                # Reinsert
+                newpos = self._linear_probe_upper_table(key2)
+                self.external_table_array[newpos] = (key2, value)
+                top_table_position = (top_table_position + 1) % self.table_size
 
     def _rehash(self) -> None:
         """
+        COPIED FROM LinearProbeTable class
         Need to resize table and reinsert all values
 
         :complexity best: O(N*hash(K)) No probing.
@@ -326,44 +453,77 @@ class DoubleKeyTable(Generic[K1, K2, V]):
         Where N is len(self)
         """
 
-        if len(self.top_level_table) > 0.5 * len(self.array):
-            self.size_index += 1
-            new_table_size = self.TABLE_SIZES[self.size_index]
+        old_upper_table = self.external_table_array
+        self.size_index += 1
 
-            new_top_level_table = {}
+        if self.size_index == len(self.external_table_sizes):
+            # Cannot be resized further.
+            return
 
-            for key1, top_level_index in self.top_level_table.items():
-                new_top_level_index = self.hash1(key1) % new_table_size
-                new_top_level_table[key1] = new_top_level_index
+        # Create a new table with the updated size
+        new_size = self.external_table_sizes[self.size_index]
+        self.external_table_array = ArrayR(new_size)
 
-            self.top_level_table = new_top_level_table
-            self.array = ArrayR(new_table_size)
+        for entry in old_upper_table:
+            if entry is not None:
+                key, internal_table = entry
+                newpos = self._linear_probe_upper_table(key)
+                self.external_table_array[newpos] = (key, internal_table)
 
-        for top_level_index, internal_table in enumerate(self.internal_tables):
-            if len(internal_table) > 0.5 * len(internal_table.array):
-                new_internal_table_size = self.TABLE_SIZES[self.size_index]
+    def _linear_probe_upper_table(self, key) -> int:
+        """
+        COPIED FROM given LinearProbeTable class
+        Find the correct position for this key in the hash table using linear probing.
+        :complexity best: O(hash(key)) first position is empty
+        :complexity worst: O(hash(key) + N*comp(K)) when we've searched the entire table
+                        where N is the tablesize
+        :raises FullError: When a table is full and cannot be inserted.
+        """
 
-                new_internal_table = LinearProbeTable[K2, V](new_internal_table_size)
+        position = self.hash1(key)
+        start_position = position  # keep track of where we started
 
-                for key2, value in internal_table.items():
-                    new_low_level_index = self.hash2(key2, new_internal_table)
-                    new_internal_table[new_low_level_index] = (key2, value)
-                
-                self.internal_tables[top_level_index] = new_internal_table
+        while True:
+            if self.external_table_array[position] is None:
+                # Empty spot. Am I inserting or retrieving?
+                return position
+
+            position = (position + 1) % self.table_size  # Linearly probe to the next spot
+
+            # Check if we've looped all the way back to the starting point
+            if position == start_position:
+                raise FullError("Table is full and cannot be inserted.")
 
     @property
     def table_size(self) -> int:
         """
         Return the current size of the table (different from the length)
+
+        Returns:
+        int: The size of the outer table.
+
+        Complexity
+        Both Best and Worst case are both O(1) as we are just returning a numeric
+        value.
         """
-        
-        return len(self.outer_table)
+        return len(self.external_table_array)
 
     def __len__(self) -> int:
         """
-        Returns number of elements in the hash table
+        Returns the number of items (key-value pairs) in the hash table.
+
+        Returns:
+        int: Total number of items in the table.
+
+        Complexity:
+        Both best and worst case is O(n*m) where n is the size of the outer table and
+        m is the maximum size of the inner tables.
         """
-        raise NotImplementedError()
+        count = 0
+        for entry in self.external_table_array:
+            if entry is not None:
+                count += len(entry[1])
+        return count
 
     def __str__(self) -> str:
         """
